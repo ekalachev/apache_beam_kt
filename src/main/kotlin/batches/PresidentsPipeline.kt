@@ -9,6 +9,7 @@ import org.apache.beam.sdk.options.PipelineOptionsFactory
 import org.apache.beam.sdk.transforms.*
 import org.apache.beam.sdk.values.KV
 import org.apache.beam.sdk.values.PCollection
+import org.apache.beam.sdk.values.TypeDescriptor
 import org.apache.beam.sdk.values.TypeDescriptors
 import utils.DatabaseUtils
 
@@ -30,41 +31,54 @@ fun main() {
     val pipeline = Pipeline.create(options)
 
     // Step 1: Read IDs from the Database
-    // This step reads all the president IDs from the database and creates a PCollection of integers.
     val idsPCollection = pipeline.apply("GetIds", Create.of(getAllIds(dbUrl)))
 
     // Step 2: Assign Batch Key
-    // This step assigns a constant key "batch" to each ID to prepare for batching.
     val keyedIds = idsPCollection.apply("KeyByConstant", WithKeys.of { _: Int -> "batch" })
         .setCoder(KvCoder.of(StringUtf8Coder.of(), VarIntCoder.of()))
 
     // Step 3: Group IDs into Batches
-    // This step groups the IDs into batches of size 10.
     val batchedIds = keyedIds.apply("BatchIds", GroupIntoBatches.ofSize(10))
         .setCoder(KvCoder.of(StringUtf8Coder.of(), IterableCoder.of(VarIntCoder.of())))
 
     // Step 4: Lookup President Names
-    // This step uses the LookupNamesDoFn to fetch the names of the presidents from the database.
     val presidentNames = batchedIds.apply("LookupNames", ParDo.of(LookupNamesDoFn(dbUrl)))
-        .setCoder(StringUtf8Coder.of())
+        .setCoder(PresidentCoder.of())
 
-    // Step 5: Count Presidents
-    // This step counts how many times each president is mentioned using Count.perElement().
-    val presidentCounts: PCollection<KV<String, Long>> =
-        presidentNames.apply("CountPresidents", Count.perElement())
-            .setCoder(KvCoder.of(StringUtf8Coder.of(), VarLongCoder.of()))
+    // Step 5: Map President to KV<Name, YearsInOffice>
+    val presidentKV: PCollection<KV<String, Long>> = presidentNames.apply(
+        "MapToKV",
+        MapElements.into(TypeDescriptors.kvs(TypeDescriptors.strings(), TypeDescriptors.longs()))
+            .via(SerializableFunction { president: President ->
+                KV.of(
+                    president.name,
+                    (president.endYear - president.startYear).toLong()
+                )
+            })
+    )
+        .setCoder(KvCoder.of(StringUtf8Coder.of(), VarLongCoder.of()))
 
-    // Step 6: Format the Counts
-    // This step formats the counts into a readable string.
-    val formattedCounts: PCollection<String> =
-        presidentCounts.apply("FormatCounts", MapElements.into(TypeDescriptors.strings())
-            .via(SerializableFunction { kv: KV<String, Long> -> "${kv.key}: ${kv.value}" })
+    // Step 6: Sum Years in Office by Name
+    val presidentYearsSum: PCollection<KV<String, Long>> =
+        presidentKV.apply("SumYearsInOffice", Combine.perKey(Sum.ofLongs()))
+
+//    // Step 6: Count Presidents by Name
+//    val presidentCounts: PCollection<KV<String, Long>> =
+//        presidentKV.apply("CountPresidents", Count.perKey())
+//            .setCoder(KvCoder.of(StringUtf8Coder.of(), VarLongCoder.of()))
+
+    // Step 7: Format the Counts
+    val formattedPresidentYearsSum: PCollection<String> =
+        presidentYearsSum.apply(
+            "FormatCounts", MapElements.into(TypeDescriptors.strings())
+                .via(SerializableFunction { kv: KV<String, Long> -> "${kv.key}: ${kv.value} years in office." })
         )
 
-    // Step 7: Write the Counts to an Output File
-    // This step writes the formatted counts to the output file.
-    formattedCounts.apply("WritePresidentCounts", TextIO.write().to(tempFilePath).withoutSharding().withSuffix(".log"))
-
+    // Step 8: Write the Counts to an Output File
+    formattedPresidentYearsSum.apply(
+        "WritePresidentCounts",
+        TextIO.write().to(tempFilePath).withoutSharding().withSuffix(".log")
+    )
     // Run the pipeline
     val result = pipeline.run()
     result.waitUntilFinish()
