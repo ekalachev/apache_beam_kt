@@ -1,4 +1,4 @@
-Contract ID: 4, Parent ID: 2, Name: Contract 2B, Value: 25000.0, Start Date: 2023-04-01, End Date: 2024-04-01
-Contract ID: 1, Parent ID: 1, Name: Contract 1A, Value: 10000.0, Start Date: 2023-01-01, End Date: 2024-01-01
-Contract ID: 3, Parent ID: 2, Name: Contract 1B, Value: 20000.0, Start Date: 2023-03-01, End Date: 2024-03-01
-Contract ID: 2, Parent ID: 1, Name: Contract 2A, Value: 15000.0, Start Date: 2023-02-01, End Date: 2024-02-01
+Name: Contract 2B, Value: 25000.0, Start Date: 2023-04-01, End Date: 2024-04-01, Parent Name: Parent Contract B, Parent Description: Description for Parent Contract B
+Name: Contract 1B, Value: 20000.0, Start Date: 2023-03-01, End Date: 2024-03-01, Parent Name: Parent Contract B, Parent Description: Description for Parent Contract B
+Name: Contract 2A, Value: 15000.0, Start Date: 2023-02-01, End Date: 2024-02-01, Parent Name: Parent Contract A, Parent Description: Description for Parent Contract A
+Name: Contract 1A, Value: 10000.0, Start Date: 2023-01-01, End Date: 2024-01-01, Parent Name: Parent Contract A, Parent Description: Description for Parent Contract A

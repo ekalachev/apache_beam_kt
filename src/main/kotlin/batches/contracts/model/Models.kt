@@ -14,3 +14,12 @@ data class Contract(
     val startDate: String,
     val endDate: String
 )
+
+data class FullContract(
+    val contractName: String,
+    val contractValue: Double,
+    val startDate: String,
+    val endDate: String,
+    val parentName: String,
+    val parentDescription: String
+)
