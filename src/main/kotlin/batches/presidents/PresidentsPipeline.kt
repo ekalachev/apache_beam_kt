@@ -1,4 +1,4 @@
-package batches
+package batches.presidents
 
 import org.apache.beam.sdk.Pipeline
 import org.apache.beam.sdk.coders.*
@@ -9,7 +9,6 @@ import org.apache.beam.sdk.options.PipelineOptionsFactory
 import org.apache.beam.sdk.transforms.*
 import org.apache.beam.sdk.values.KV
 import org.apache.beam.sdk.values.PCollection
-import org.apache.beam.sdk.values.TypeDescriptor
 import org.apache.beam.sdk.values.TypeDescriptors
 import utils.DatabaseUtils
 
@@ -61,11 +60,6 @@ fun main() {
     // Step 6: Sum Years in Office by Name
     val presidentYearsSum: PCollection<KV<String, Long>> =
         presidentKV.apply("SumYearsInOffice", Combine.perKey(Sum.ofLongs()))
-
-//    // Step 6: Count Presidents by Name
-//    val presidentCounts: PCollection<KV<String, Long>> =
-//        presidentKV.apply("CountPresidents", Count.perKey())
-//            .setCoder(KvCoder.of(StringUtf8Coder.of(), VarLongCoder.of()))
 
     // Step 7: Format the Counts
     val formattedPresidentYearsSum: PCollection<String> =

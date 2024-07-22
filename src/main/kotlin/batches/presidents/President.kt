@@ -1,4 +1,4 @@
-package batches
+package batches.presidents
 
 data class President(
     val name: String,

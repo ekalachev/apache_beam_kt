@@ -1,3 +1,5 @@
+package batches.presidents.db
+
 import utils.DatabaseUtils
 
 fun createPresidentsDatabase() {
