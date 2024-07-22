@@ -44,6 +44,7 @@ object DatabaseUtils {
                     when (param) {
                         is String -> preparedStatement.setString(index + 1, param)
                         is Int -> preparedStatement.setInt(index + 1, param)
+                        is Double -> preparedStatement.setDouble(index + 1, param)
                         else -> throw IllegalArgumentException("Unsupported parameter type")
                     }
                 }
