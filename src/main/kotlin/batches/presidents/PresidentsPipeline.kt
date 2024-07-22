@@ -37,7 +37,7 @@ fun main() {
         .setCoder(KvCoder.of(StringUtf8Coder.of(), VarIntCoder.of()))
 
     // Step 3: Group IDs into Batches
-    val batchedIds = keyedIds.apply("BatchIds", GroupIntoBatches.ofSize(10))
+        val batchedIds = keyedIds.apply("BatchIds", GroupIntoBatches.ofSize(10))
         .setCoder(KvCoder.of(StringUtf8Coder.of(), IterableCoder.of(VarIntCoder.of())))
 
     // Step 4: Lookup President Names

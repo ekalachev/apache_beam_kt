@@ -7,16 +7,15 @@ import batches.contracts.model.Contract
 import batches.contracts.model.FullContract
 import batches.contracts.model.ParentContract
 import org.apache.beam.sdk.Pipeline
-import org.apache.beam.sdk.coders.CoderRegistry
+import org.apache.beam.sdk.coders.*
 import org.apache.beam.sdk.io.TextIO
 import org.apache.beam.sdk.options.PipelineOptionsFactory
 import org.apache.beam.sdk.transforms.*
 import org.apache.beam.sdk.transforms.windowing.GlobalWindow
 import org.apache.beam.sdk.values.KV
 import org.apache.beam.sdk.values.PCollection
-import org.apache.beam.sdk.values.TypeDescriptors
-import utils.DatabaseUtils
 import org.joda.time.Instant
+import utils.DatabaseUtils
 
 /**
  * Retrieves all contracts from the database.
@@ -45,25 +44,26 @@ fun getAllContracts(dbUrl: String): List<Contract> {
 }
 
 /**
- * Retrieves a parent contract by its ID.
+ * Retrieves a list of parent contracts by their IDs.
  *
  * @param dbUrl The database URL.
- * @param parentId The ID of the parent contract.
- * @return The parent contract, or null if not found.
+ * @param parentIds The list of parent IDs.
+ * @return A map of parent IDs to their corresponding parent contracts.
  */
-fun getParentContractById(dbUrl: String, parentId: Int): ParentContract? {
-    var parentContract: ParentContract? = null
-    val query = "SELECT id, name, description FROM ParentContracts WHERE id = ?"
+fun getParentContractsByIds(dbUrl: String, parentIds: List<Int>): Map<Int, ParentContract> {
+    val parentContracts = mutableMapOf<Int, ParentContract>()
+    val query = "SELECT id, name, description FROM ParentContracts WHERE id IN (${parentIds.joinToString(",")})"
 
-    DatabaseUtils.executeSqlQueryWithParams(dbUrl, query, listOf(parentId)) { resultSet ->
-        parentContract = ParentContract(
+    DatabaseUtils.executeSqlQuery(dbUrl, query) { resultSet ->
+        val parentContract = ParentContract(
             id = resultSet.getInt("id"),
             name = resultSet.getString("name"),
             description = resultSet.getString("description")
         )
+        parentContracts[parentContract.id] = parentContract
     }
 
-    return parentContract
+    return parentContracts
 }
 
 /**
@@ -87,60 +87,27 @@ class GroupByParentId : DoFn<Contract, KV<Int, Contract>>() {
 }
 
 /**
- * Batches parent IDs into fixed-size batches.
- */
-class BatchParentIds(private val batchSize: Int) :
-    PTransform<PCollection<KV<Int, Contract>>, PCollection<KV<Int, Iterable<@JvmWildcard Contract>>>>() {
-    override fun expand(input: PCollection<KV<Int, Contract>>): PCollection<KV<Int, Iterable<@JvmWildcard Contract>>> {
-        return input
-            .apply("GroupByParentId", GroupByKey.create())
-            .apply("BatchBySize", ParDo.of(BatchBySizeFn(batchSize)))
-    }
-
-    private class BatchBySizeFn(private val batchSize: Int) :
-        DoFn<KV<Int, Iterable<@JvmWildcard Contract>>, KV<Int, Iterable<@JvmWildcard Contract>>>() {
-        private val buffer = mutableListOf<KV<Int, Iterable<@JvmWildcard Contract>>>()
-
-        @ProcessElement
-        fun processElement(context: ProcessContext) {
-            buffer.add(context.element())
-            if (buffer.size >= batchSize) {
-                flushBatch(context)
-            }
-        }
-
-        @FinishBundle
-        fun finishBundle(context: FinishBundleContext) {
-            if (buffer.isNotEmpty()) {
-                flushBatch(context)
-            }
-        }
-
-        private fun flushBatch(context: DoFn<KV<Int, Iterable<@JvmWildcard Contract>>, KV<Int, Iterable<@JvmWildcard Contract>>>.ProcessContext) {
-            buffer.forEach { context.output(it) }
-            buffer.clear()
-        }
-
-        private fun flushBatch(context: DoFn<KV<Int, Iterable<@JvmWildcard Contract>>, KV<Int, Iterable<@JvmWildcard Contract>>>.FinishBundleContext) {
-            buffer.forEach { context.output(it, Instant.now(), GlobalWindow.INSTANCE) }
-            buffer.clear()
-        }
-    }
-}
-
-/**
  * Fetches parent contract details and combines them with their corresponding contracts.
  */
 class FetchParentContractDetails(private val dbUrl: String) :
-    DoFn<KV<Int, Iterable<@JvmWildcard Contract>>, FullContract>() {
+    DoFn<KV<String, Iterable<@JvmWildcard KV<Int, Iterable<@JvmWildcard Contract>>>>, FullContract>() {
     @ProcessElement
     fun processElement(context: ProcessContext) {
-        val parentId = context.element().key
-        val contracts = context.element().value
+        val input = context.element()
 
-        val parentContract = getParentContractById(dbUrl, parentId)
-        if (parentContract != null) {
-            for (contract in contracts) {
+        // Collect parent IDs
+        val parentIds = input.value.map { it.key }
+
+        // Fetch parent contract details in a single query
+        val parentContracts = getParentContractsByIds(dbUrl, parentIds)
+
+        val contracts = input.value.flatMap { it.value }
+
+        // Combine parent contract details with contracts
+        for (contract in contracts) {
+            val parentContract = parentContracts[contract.parentId]
+
+            if (parentContract != null) {
                 context.output(
                     FullContract(
                         contractName = contract.contractName,
@@ -154,12 +121,17 @@ class FetchParentContractDetails(private val dbUrl: String) :
             }
         }
     }
+
+    @FinishBundle
+    fun finishBundle(context: FinishBundleContext) {
+
+    }
 }
 
 fun main() {
     val dbUrl = "jdbc:sqlite:contracts.db"
     val outputFilePath = "contracts"
-    val batchSize = 5
+    val batchSize: Long = 10
     val options = PipelineOptionsFactory.create()
     val pipeline = Pipeline.create(options)
 
@@ -180,8 +152,11 @@ fun main() {
         .apply("GroupByParentId", ParDo.of(GroupByParentId()))
 
     // Step 3: Batch parent IDs into fixed-size batches
-    val batchedByParentId: PCollection<KV<Int, Iterable<@JvmWildcard Contract>>> = groupedByParentId
-        .apply("BatchParentIds", BatchParentIds(batchSize))
+    val batchedByParentId: PCollection<KV<String, Iterable<KV<Int, Iterable<Contract>>>>> = groupedByParentId
+        .apply("GroupByKey", GroupByKey.create())
+        .apply("SetBatchKey", WithKeys.of { _: KV<Int, Iterable<Contract>> -> "batch" })
+        .setCoder(KvCoder.of(StringUtf8Coder.of(), KvCoder.of(VarIntCoder.of(), IterableCoder.of(ContractCoder.of()))))
+        .apply("GroupIntoBatches", GroupIntoBatches.ofSize(batchSize))
 
     // Step 4: Fetch parent contract details and combine with contracts
     val parentDetailsWithContracts: PCollection<FullContract> = batchedByParentId
