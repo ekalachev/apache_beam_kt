@@ -11,10 +11,8 @@ import org.apache.beam.sdk.coders.*
 import org.apache.beam.sdk.io.TextIO
 import org.apache.beam.sdk.options.PipelineOptionsFactory
 import org.apache.beam.sdk.transforms.*
-import org.apache.beam.sdk.transforms.windowing.GlobalWindow
 import org.apache.beam.sdk.values.KV
 import org.apache.beam.sdk.values.PCollection
-import org.joda.time.Instant
 import utils.DatabaseUtils
 
 /**
@@ -124,7 +122,7 @@ class FetchParentContractDetails(private val dbUrl: String) :
 
     @FinishBundle
     fun finishBundle(context: FinishBundleContext) {
-
+        // Optional: Implement logic to handle actions at the end of processing a bundle, if needed.
     }
 }
 
@@ -141,7 +139,7 @@ fun main() {
     coderRegistry.registerCoderForClass(ParentContract::class.java, ParentContractCoder.of())
     coderRegistry.registerCoderForClass(FullContract::class.java, FullContractCoder.of())
 
-    // Step 1: Read Contracts from the Database
+    // Step 1: Read contracts from the database
     val contracts: List<Contract> = getAllContracts(dbUrl)
 
     val contractsPCollection: PCollection<Contract> = pipeline
